@@ -155,6 +155,13 @@ button{font:inherit;color:inherit;cursor:pointer}
 .btnrow{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
 .roll{font-family:var(--f-mono);font-size:.9rem}
 
+/* Album */
+.album{display:flex;flex-direction:column;gap:14px}
+.album-col{display:flex;flex-direction:column;gap:12px;min-width:0}
+.album-row{display:flex;gap:10px;flex-wrap:wrap}
+.album-row input{flex:1 1 220px;min-width:0;font:inherit;color:var(--fg);background:var(--surface);border:2px solid var(--fg);border-radius:10px;padding:9px 12px}
+.album-err{color:var(--fg);background:var(--soft);border-left:6px solid var(--boulder);padding:8px 12px;border-radius:6px;font-weight:600}
+.btn.big{display:inline-block;text-decoration:none;text-align:center;font-size:1.1rem;padding:14px 18px;align-self:flex-start}
 footer{color:var(--muted);font-size:.88rem;border-top:1px solid var(--line);padding-top:16px;max-width:70ch}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(20px);background:var(--fg);color:var(--bg);padding:9px 16px;border-radius:999px;font-weight:600;font-size:.92rem;opacity:0;pointer-events:none;transition:.2s;z-index:9}
 .toast.show{opacity:1;transform:translateX(-50%)}
@@ -179,6 +186,7 @@ footer{color:var(--muted);font-size:.88rem;border-top:1px solid var(--line);padd
     <div class="challenge">
       <button class="btn fill" id="chBtn" style="--c:var(--joker)">Grimassen-Challenge ziehen</button>
       <p class="challenge-out" id="chOut">Tippe auf den Knopf. Das Foto rechts ist die Messlatte.</p>
+      <button class="btn small" id="toAlbum">Beweisfoto ins Album schicken</button>
     </div>
   </div>
   <figure class="polaroid" style="margin:0">
@@ -197,6 +205,38 @@ footer{color:var(--muted);font-size:.88rem;border-top:1px solid var(--line);padd
     <p class="eyebrow">Woche geschafft</p>
     <p class="count-big" id="progTxt">0 von 7 Tagen</p>
     <div class="bar" role="progressbar" aria-label="Fortschritt der Woche" aria-valuemin="0" aria-valuemax="7" id="progBar"><i id="progFill"></i></div>
+  </div>
+</section>
+
+<section id="album">
+  <div class="sec-head">
+    <p class="eyebrow">Fotoalbum</p>
+    <h2>Grimassen und Urlaubsfotos</h2>
+    <p>Ein gemeinsames Google-Fotos-Album für die ganze Woche. Hier hinterlegst du den Link und öffnest es mit einem Tap.</p>
+  </div>
+  <div class="card album">
+    <div class="album-col" id="albumEmpty">
+      <label for="albumInput" class="eyebrow">Link zum geteilten Album</label>
+      <div class="album-row">
+        <input id="albumInput" type="url" inputmode="url" autocomplete="off" placeholder="https://photos.app.goo.gl/…">
+        <button class="btn fill" id="albumSave" style="--c:var(--oma)">Speichern</button>
+      </div>
+      <p class="album-err" id="albumErr" role="alert" hidden></p>
+      <ol class="notes">
+        <li>In Google Fotos ein Album anlegen, zum Beispiel „Herbstferien 2026“.</li>
+        <li>Auf Teilen tippen und einen Link erstellen.</li>
+        <li>Emil erlauben, selbst Fotos hinzuzufügen, dann kann er seine Grimassen direkt hochladen.</li>
+        <li>Den Link oben einfügen und speichern.</li>
+      </ol>
+    </div>
+    <div class="album-col" id="albumSet" hidden>
+      <a class="btn fill big" id="albumOpen" target="_blank" rel="noopener" style="--c:var(--oma)">Album öffnen</a>
+      <p class="count-sub" id="albumShow" style="overflow-wrap:anywhere"></p>
+      <div class="btnrow">
+        <button class="btn small" id="albumCopy">Link kopieren</button>
+        <button class="btn small" id="albumChange">Link ändern</button>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -531,6 +571,30 @@ $('#rollBtn').addEventListener('click',function(){rolls++;save('rolls',rolls);re
 /* Challenge */
 var ci=-1;
 $('#chBtn').addEventListener('click',function(){var n;do{n=Math.floor(Math.random()*CHALL.length)}while(n===ci);ci=n;$('#chOut').textContent=CHALL[n]});
+
+/* Fotoalbum */
+var ALBUM_DEFAULT='';
+var album=load('album','')||ALBUM_DEFAULT;
+function albumOk(u){try{var x=new URL(u);return x.protocol==='https:'&&(x.hostname==='photos.app.goo.gl'||x.hostname==='photos.google.com')}catch(e){return false}}
+function renderAlbum(edit){
+  var has=albumOk(album)&&!edit;
+  $('#albumSet').hidden=!has;$('#albumEmpty').hidden=has;
+  if(has){$('#albumOpen').setAttribute('href',album);$('#albumShow').textContent=album}
+}
+$('#albumSave').addEventListener('click',function(){
+  var v=$('#albumInput').value.trim(),err=$('#albumErr');
+  if(!albumOk(v)){err.hidden=false;err.textContent='Das sieht nicht nach einem Google-Fotos-Link aus. Er beginnt mit https://photos.app.goo.gl oder https://photos.google.com.';return}
+  err.hidden=true;album=v;save('album',v);renderAlbum();toast('Album gespeichert');
+});
+$('#albumInput').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();$('#albumSave').click()}});
+$('#albumChange').addEventListener('click',function(){renderAlbum(true);var i=$('#albumInput');i.value=album;i.focus();i.select()});
+$('#albumCopy').addEventListener('click',function(){
+  var ok=function(){toast('Link kopiert')};
+  var fail=function(){var r=document.createRange();r.selectNodeContents($('#albumShow'));var s=window.getSelection();s.removeAllRanges();s.addRange(r);toast('Link markiert, jetzt kopieren')};
+  try{navigator.clipboard.writeText(album).then(ok,fail)}catch(e){fail()}
+});
+renderAlbum();
+$('#toAlbum').addEventListener('click',function(){var a=$('#album');try{a.scrollIntoView({behavior:'smooth',block:'start'})}catch(e){a.scrollIntoView()}});
 
 renderTabs();renderPanel();renderProg();renderTips();renderDuel();renderRoll();tick();setInterval(tick,30000);
 })();
