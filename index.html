@@ -15,6 +15,7 @@
   --paper:#FFFFFF; --paper-ink:#141A2B; --shadow:#141A2B;
   --boulder:#FF5A1F; --wasser:#19B5C9; --bruecke:#A18BFF; --oma:#FF6FA1; --joker:#B6E04A;
   --on-c:#141A2B;
+  --lb-bg:rgba(6,9,20,.94); --lb-fg:#FFFFFF; --lb-btn:rgba(255,255,255,.16);
   --f-display:'Dela Gothic One','Arial Black',Impact,sans-serif;
   --f-body:'Bricolage Grotesque','Segoe UI',system-ui,sans-serif;
   --f-mono:'DM Mono',ui-monospace,Menlo,monospace;
@@ -162,6 +163,23 @@ button{font:inherit;color:inherit;cursor:pointer}
 .album-row input{flex:1 1 220px;min-width:0;font:inherit;color:var(--fg);background:var(--surface);border:2px solid var(--fg);border-radius:10px;padding:9px 12px}
 .album-err{color:var(--fg);background:var(--soft);border-left:6px solid var(--boulder);padding:8px 12px;border-radius:6px;font-weight:600}
 .btn.big{display:inline-block;text-decoration:none;text-align:center;font-size:1.1rem;padding:14px 18px;align-self:flex-start}
+/* Galerie */
+.gal-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(30%,120px),1fr));gap:8px}
+.gallery button{padding:0;border:0;border-radius:8px;overflow:hidden;aspect-ratio:1;background:var(--soft);display:block;max-width:100%}
+.gallery button:nth-child(3n+1){transform:rotate(-1.2deg)}
+.gallery button:nth-child(3n+2){transform:rotate(1deg)}
+.gallery button:hover{transform:scale(1.04)}
+.gallery img{width:100%;height:100%;object-fit:cover;display:block}
+dialog.lb{border:0;padding:0;margin:0;background:transparent;width:100%;height:100%;max-width:100%;max-height:100%;color:var(--lb-fg)}
+dialog.lb::backdrop{background:var(--lb-bg)}
+.lb-inner{position:relative;width:100%;height:100%;display:grid;place-items:center;padding:calc(56px + env(safe-area-inset-top,0px)) 16px calc(64px + env(safe-area-inset-bottom,0px))}
+.lb-inner img{max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;background:var(--lb-bg)}
+.lb-btn{position:absolute;background:var(--lb-btn);color:var(--lb-fg);border:0;border-radius:999px;width:46px;height:46px;font-size:1.4rem;line-height:1;display:grid;place-items:center}
+.lb-close{top:calc(10px + env(safe-area-inset-top,0px));right:12px}
+.lb-prev{left:12px;top:50%;transform:translateY(-50%)}
+.lb-next{right:12px;top:50%;transform:translateY(-50%)}
+.lb-count{position:absolute;left:0;right:0;bottom:calc(18px + env(safe-area-inset-bottom,0px));text-align:center;font-family:var(--f-mono);font-size:.9rem}
 footer{color:var(--muted);font-size:.88rem;border-top:1px solid var(--line);padding-top:16px;max-width:70ch}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(20px);background:var(--fg);color:var(--bg);padding:9px 16px;border-radius:999px;font-weight:600;font-size:.92rem;opacity:0;pointer-events:none;transition:.2s;z-index:9}
 .toast.show{opacity:1;transform:translateX(-50%)}
@@ -236,6 +254,13 @@ footer{color:var(--muted);font-size:.88rem;border-top:1px solid var(--line);padd
         <button class="btn small" id="albumCopy">Link kopieren</button>
         <button class="btn small" id="albumChange">Link ändern</button>
       </div>
+    </div>
+    <div class="album-col" id="galWrap" hidden>
+      <div class="gal-head">
+        <span class="eyebrow" id="galInfo" aria-live="polite">Fotos werden geladen …</span>
+        <button class="btn small" id="galReload">Neu laden</button>
+      </div>
+      <div class="gallery" id="gallery"></div>
     </div>
   </div>
 </section>
@@ -329,6 +354,15 @@ footer{color:var(--muted);font-size:.88rem;border-top:1px solid var(--line);padd
 </footer>
 </div>
 <div class="toast" id="toast" role="status"></div>
+<dialog class="lb" id="lb" aria-label="Foto groß">
+  <div class="lb-inner" id="lbInner">
+    <img id="lbImg" alt="">
+    <button class="lb-btn lb-close" id="lbClose" aria-label="Schließen">✕</button>
+    <button class="lb-btn lb-prev" id="lbPrev" aria-label="Vorheriges Foto">‹</button>
+    <button class="lb-btn lb-next" id="lbNext" aria-label="Nächstes Foto">›</button>
+    <p class="lb-count" id="lbCount"></p>
+  </div>
+</dialog>
 
 <script>
 (function(){
@@ -572,8 +606,14 @@ $('#rollBtn').addEventListener('click',function(){rolls++;save('rolls',rolls);re
 var ci=-1;
 $('#chBtn').addEventListener('click',function(){var n;do{n=Math.floor(Math.random()*CHALL.length)}while(n===ci);ci=n;$('#chOut').textContent=CHALL[n]});
 
-/* Fotoalbum */
+/* ===== EINSTELLUNGEN =====
+   ALBUM_DEFAULT: Link zum geteilten Google-Fotos-Album (https://photos.app.goo.gl/...)
+   PHOTOS_API:    Web-App-URL des Apps Scripts (endet auf /exec) */
 var ALBUM_DEFAULT='';
+var PHOTOS_API='';
+/* ========================== */
+
+/* Fotoalbum */
 var album=load('album','')||ALBUM_DEFAULT;
 function albumOk(u){try{var x=new URL(u);return x.protocol==='https:'&&(x.hostname==='photos.app.goo.gl'||x.hostname==='photos.google.com')}catch(e){return false}}
 function renderAlbum(edit){
@@ -594,6 +634,48 @@ $('#albumCopy').addEventListener('click',function(){
   try{navigator.clipboard.writeText(album).then(ok,fail)}catch(e){fail()}
 });
 renderAlbum();
+
+/* Galerie */
+var photos=[],lbI=0;
+function photoOk(u){return typeof u==='string'&&u.indexOf('https://lh3.googleusercontent.com/')===0&&!/["'<>\s]/.test(u)}
+function hhmm(iso){try{return new Date(iso).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}catch(e){return ''}}
+function loadGallery(refresh){
+  if(!PHOTOS_API)return;
+  $('#galWrap').hidden=false;
+  $('#galInfo').textContent='Fotos werden geladen …';
+  var sep=PHOTOS_API.indexOf('?')<0?'?':'&';
+  fetch(PHOTOS_API+sep+(refresh?'refresh=1&':'')+'t='+Date.now())
+    .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})
+    .then(function(d){
+      if(!d||!d.ok)throw new Error(d&&d.error||'Fehler');
+      photos=(d.photos||[]).filter(function(p){return p&&photoOk(p.url)});
+      var g=$('#gallery');
+      g.innerHTML=photos.map(function(p,i){return '<button data-i="'+i+'" aria-label="Foto '+(i+1)+' von '+photos.length+' groß ansehen"><img loading="lazy" src="'+p.url+'=w400-h400-c" alt=""></button>'}).join('');
+      $('#galInfo').textContent=photos.length?(photos.length+(photos.length===1?' Foto':' Fotos')+(d.updated?' · Stand '+hhmm(d.updated):'')):'Noch keine Fotos im Album. Zeit für die erste Grimasse!';
+    })
+    .catch(function(){$('#galInfo').textContent='Galerie gerade nicht erreichbar. Öffne das Album über den Knopf.'});
+}
+var lb=$('#lb');
+function showLb(i){
+  if(!photos.length)return;
+  lbI=(i+photos.length)%photos.length;
+  $('#lbImg').src=photos[lbI].url+'=w2000-h2000';
+  $('#lbCount').textContent=(lbI+1)+' / '+photos.length;
+  if(!lb.open){try{lb.showModal()}catch(e){lb.setAttribute('open','')}}
+}
+function closeLb(){try{lb.close()}catch(e){lb.removeAttribute('open')}}
+$('#gallery').addEventListener('click',function(e){var b=e.target.closest('button[data-i]');if(b)showLb(+b.dataset.i)});
+$('#lbClose').addEventListener('click',closeLb);
+$('#lbPrev').addEventListener('click',function(){showLb(lbI-1)});
+$('#lbNext').addEventListener('click',function(){showLb(lbI+1)});
+$('#lbInner').addEventListener('click',function(e){if(e.target===this)closeLb()});
+lb.addEventListener('keydown',function(e){if(e.key==='ArrowLeft')showLb(lbI-1);else if(e.key==='ArrowRight')showLb(lbI+1)});
+var tx=null;
+lb.addEventListener('touchstart',function(e){tx=e.touches[0].clientX},{passive:true});
+lb.addEventListener('touchend',function(e){if(tx===null)return;var dx=e.changedTouches[0].clientX-tx;tx=null;if(Math.abs(dx)>50)showLb(lbI+(dx<0?1:-1))});
+$('#galReload').addEventListener('click',function(){loadGallery(true)});
+loadGallery(false);
+
 $('#toAlbum').addEventListener('click',function(){var a=$('#album');try{a.scrollIntoView({behavior:'smooth',block:'start'})}catch(e){a.scrollIntoView()}});
 
 renderTabs();renderPanel();renderProg();renderTips();renderDuel();renderRoll();tick();setInterval(tick,30000);
